@@ -19,34 +19,34 @@ pipeline {
       }
     }
 
-    stage('Configurar JFrog CLI') {
-      steps {
-        withCredentials([usernamePassword(
-          credentialsId: '0c346bf2-2966-4dce-b6fc-b09f4b55975e',   // <<-- TU ID
-          usernameVariable: 'ART_USER',
-          passwordVariable: 'ART_PASS'
-        )]) {
-          // Descarga JFrog CLI local si no existe y lo agrega al PATH
-          bat '''
-          if not exist jf.exe (
-            powershell -Command "Invoke-WebRequest -Uri https://releases.jfrog.io/artifactory/jfrog-cli/v2/jfrog-cli-windows-amd64/jf.exe -OutFile jf.exe"
-          )
-          set PATH=%CD%;%PATH%
-          jf --version
-          '''
+   stage('Configurar JFrog CLI') {
+  steps {
+    withCredentials([usernamePassword(
+      credentialsId: '0c346bf2-2966-4dce-b6fc-b09f4b55975e',
+      usernameVariable: 'ART_USER',
+      passwordVariable: 'ART_PASS'
+    )]) {
+      // Descargar jf.exe con certutil (no necesita PowerShell)
+      bat '''
+      if not exist jf.exe (
+        certutil -urlcache -split -f ^
+          https://releases.jfrog.io/artifactory/jfrog-cli/v2/jfrog-cli-windows-amd64/jf.exe jf.exe
+      )
+      set PATH=%CD%;%PATH%
+      jf --version
+      '''
 
-          // Configura el servidor (no interactivo) y verifica conexión
-          bat """
-          jf c add %ART_SERVER_ID% ^
-            --url %ART_URL% ^
-            --user %ART_USER% ^
-            --password %ART_PASS% ^
-            --interactive=false
-          """
-          bat 'jf rt ping --server-id %ART_SERVER_ID%'
-        }
-      }
+      bat """
+      jf c add %ART_SERVER_ID% ^
+        --url %ART_URL% ^
+        --user %ART_USER% ^
+        --password %ART_PASS% ^
+        --interactive=false
+      """
+      bat 'jf rt ping --server-id %ART_SERVER_ID%'
     }
+  }
+}
 
     stage('Build (Maven)') {
       steps {
