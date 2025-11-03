@@ -1,5 +1,20 @@
 pipeline {
-    agent any
+  agent any
+  stages {
+    stage('Ping Artifactory') {
+      steps {
+        script {
+          // Usa la instancia guardada en Manage Jenkins (Server ID de tu screenshot)
+          def server = rtServer(
+            id: 'artifactory-local'   // <-- igual al "Server ID" configurado
+          )
+          def ok = server.ping()
+          echo "Ping Artifactory: ${ok}"
+        }
+      }
+    }
+  }
+}
 
     options {
         timestamps()
