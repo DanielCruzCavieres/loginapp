@@ -8,38 +8,28 @@ pipeline {
     }
 
     tools {
-        jdk   'JDK21'         // Debe existir en Global Tool Configuration
-        maven 'Maven_3.9.x'   // Debe existir en Global Tool Configuration
+        jdk   'JDK21'
+        maven 'Maven_3.9.x'
     }
 
     environment {
         PROJECT_NAME      = 'loginapp'
-        ART_SERVER_ID     = 'artifactory-local'     // el Server ID que configuraste
+        ART_URL           = 'http://localhost:8082/artifactory'
         ART_RELEASE_REPO  = 'libs-release-local'
         ART_SNAPSHOT_REPO = 'libs-snapshot-local'
+        // ID del credential en Jenkins (Username/Password)
+        ART_CRED_ID       = 'artifactory-admin'
     }
 
     stages {
-        stage('Ping Artifactory') {
-            steps {
-                script {
-                    // Toma la instancia que ya registraste en Manage Jenkins → Configure System
-                    def server = rtServer(id: env.ART_SERVER_ID)
-                    def ok = server.ping()
-                    echo "Ping Artifactory: ${ok}"
-                }
-            }
-        }
-
         stage('Checkout') {
             steps {
                 echo "=== Clonando el repositorio desde GitHub ==="
                 checkout([
                     $class: 'GitSCM',
-                    branches: [[name: '*/main']], // cambia a '*/master' si corresponde
+                    branches: [[name: '*/main']],
                     userRemoteConfigs: [[
                         url: 'https://github.com/DanielCruzCavieres/loginapp.git'
-                        // credentialsId: 'github-pat'
                     ]]
                 ])
             }
@@ -52,7 +42,6 @@ pipeline {
             }
             post {
                 always {
-                    echo "=== Publicando resultados de tests ==="
                     junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
                 }
             }
@@ -67,50 +56,49 @@ pipeline {
 
         stage('Archivar Artefactos') {
             steps {
-                echo "=== Archivando artefactos generados ==="
                 archiveArtifacts artifacts: 'target/**/*.jar, target/**/*.war', fingerprint: true
             }
         }
 
-        stage('Publicar en Artifactory') {
+        stage('Publicar en Artifactory (REST)') {
             steps {
-                script {
-                    echo "=== Resolviendo versión Maven para decidir el repositorio destino ==="
-                    // Obtiene version del POM (filtrando ruido)
-                    def raw = bat(returnStdout: true, script: 'mvn -q -DforceStdout help:evaluate -Dexpression=project.version').trim()
-                    def version = raw.readLines().findAll{ it?.trim() && !it.startsWith('Picked up') && !it.startsWith('WARNING') }.last().trim()
-                    echo "Versión detectada: ${version}"
+                withCredentials([usernamePassword(credentialsId: env.ART_CRED_ID, usernameVariable: 'ART_USER', passwordVariable: 'ART_PASS')]) {
+                    script {
+                        // 1) Resolver versión Maven
+                        def raw = bat(returnStdout: true, script: 'mvn -q -DforceStdout help:evaluate -Dexpression=project.version').trim()
+                        def version = raw.readLines()
+                            .findAll { it?.trim() && !it.startsWith('Picked up') && !it.startsWith('WARNING') }
+                            .last().trim()
+                        echo "Versión detectada: ${version}"
 
-                    def targetRepo = version.contains('SNAPSHOT') ? env.ART_SNAPSHOT_REPO : env.ART_RELEASE_REPO
-                    echo "Repositorio destino: ${targetRepo}"
+                        // 2) Elegir repo
+                        def targetRepo = version.contains('SNAPSHOT') ? env.ART_SNAPSHOT_REPO : env.ART_RELEASE_REPO
+                        echo "Repositorio destino: ${targetRepo}"
 
-                    def server = rtServer(id: env.ART_SERVER_ID)
+                        // 3) Encontrar JAR y subirlo con curl
+                        //    (en Windows, extraemos nombre del archivo con variables de batch)
+                        bat """
+                        setlocal EnableDelayedExpansion
+                        for %%f in (target\\*.jar) do (
+                          set JAR=%%f
+                          set JAR_NAME=%%~nxf
+                        )
+                        echo JAR local: %JAR%
+                        echo Nombre: %JAR_NAME%
 
-                    // Sube todos los JAR desde target/ a: <repo>/<proyecto>/<version>/
-                    def uploadSpec = """{
-                      "files": [
-                        {
-                          "pattern": "target/*.jar",
-                          "target": "${targetRepo}/${env.PROJECT_NAME}/${version}/"
-                        }
-                      ]
-                    }"""
+                        curl -u %ART_USER%:%ART_PASS% -X PUT -T "%JAR%" ^
+                          "${ART_URL}/${targetRepo}/${PROJECT_NAME}/${version}/%JAR_NAME%"
 
-                    echo "=== Subiendo artefactos a Artifactory ==="
-                    server.upload(spec: uploadSpec)
-
-                    // (Opcional) Publicar Build Info
-                    def buildInfo = rtBuildInfo()           // build-info vacío
-                    server.publishBuildInfo(buildInfo)
-
-                    echo "✅ Publicación en Artifactory completada."
+                        endlocal
+                        """
+                    }
                 }
             }
         }
     }
 
     post {
-        success { echo "✅ Pipeline completado correctamente. Build exitoso." }
+        success { echo "✅ Pipeline completado y artefacto publicado en Artifactory." }
         failure { echo "❌ Error en el pipeline. Revisa la consola para detalles." }
     }
 }
