@@ -3,7 +3,7 @@ pipeline {
 
   tools {
     jdk   'JDK21'          // ← EXACTO como aparece en Global Tool Configuration
-    maven 'Maven_3.9.11'   // ← EXACTO
+    maven 'Maven_3.9.x'   // ← EXACTO
   }
 
   options { timestamps() }
