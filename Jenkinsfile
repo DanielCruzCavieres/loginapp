@@ -9,8 +9,8 @@ pipeline {
 
     tools {
         // Deben coincidir con los nombres definidos en Manage Jenkins > Tools
-        jdk 'JDK1'
-        maven 'Maven_3.9'
+        jdk 'JDK21'
+        maven 'Maven_3.9.x'
     }
 
     environment {
