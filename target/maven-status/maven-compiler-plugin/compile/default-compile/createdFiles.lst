@@ -1,0 +1,3 @@
+com\myconstruction\dao\UserDao.class
+com\myconstruction\model\User.class
+com\myconstruction\servlets\LoginServlet.class
