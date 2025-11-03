@@ -18,7 +18,7 @@ pipeline {
         ART_RELEASE_REPO  = 'libs-release-local'
         ART_SNAPSHOT_REPO = 'libs-snapshot-local'
         // ID del credential en Jenkins (Username/Password)
-        ART_CRED_ID       = 'artifactory-admin'
+        ART_CRED_ID = '0c346bf2-2966-4dce-b6fc-b09f4b55975e'
     }
 
     stages {
