@@ -1,20 +1,5 @@
 pipeline {
-  agent any
-  stages {
-    stage('Ping Artifactory') {
-      steps {
-        script {
-          // Usa la instancia guardada en Manage Jenkins (Server ID de tu screenshot)
-          def server = rtServer(
-            id: 'artifactory-local'   // <-- igual al "Server ID" configurado
-          )
-          def ok = server.ping()
-          echo "Ping Artifactory: ${ok}"
-        }
-      }
-    }
-  }
-}
+    agent any
 
     options {
         timestamps()
@@ -29,24 +14,33 @@ pipeline {
     }
 
     environment {
-        PROJECT_NAME        = 'loginapp'
-        // Config Artifactory (ajusta si cambiaste nombres)
-        ART_SERVER_ID       = 'artifactory-local'
-        ART_RELEASE_REPO    = 'libs-release-local'
-        ART_SNAPSHOT_REPO   = 'libs-snapshot-local'
+        PROJECT_NAME      = 'loginapp'
+        ART_SERVER_ID     = 'artifactory-local'
+        ART_RELEASE_REPO  = 'libs-release-local'
+        ART_SNAPSHOT_REPO = 'libs-snapshot-local'
     }
 
     stages {
+
+        stage('Ping Artifactory') {
+            steps {
+                script {
+                    def server = Artifactory.server(env.ART_SERVER_ID)
+                    def ok = server.ping()
+                    echo "Ping Artifactory: ${ok}"
+                }
+            }
+        }
 
         stage('Checkout') {
             steps {
                 echo "=== Clonando el repositorio desde GitHub ==="
                 checkout([
                     $class: 'GitSCM',
-                    branches: [[name: '*/main']],  // Cambia a '*/master' si corresponde
+                    branches: [[name: '*/main']], // cambia a '*/master' si corresponde
                     userRemoteConfigs: [[
                         url: 'https://github.com/DanielCruzCavieres/loginapp.git'
-                        // credentialsId: 'github-pat'  // Descomenta si tu repo es privado
+                        // credentialsId: 'github-pat'  // descomenta si el repo es privado
                     ]]
                 ])
             }
@@ -83,10 +77,12 @@ pipeline {
             steps {
                 script {
                     echo "=== Resolviendo versión Maven para decidir el repositorio destino ==="
-                    // Obtiene la versión del POM de forma limpia
+                    // Obtiene la versión del POM
                     def raw = bat(returnStdout: true, script: 'mvn -q -DforceStdout help:evaluate -Dexpression=project.version').trim()
-                    // En algunos entornos Maven imprime líneas extra; nos quedamos con la última no vacía
-                    def version = raw.readLines().findAll { it?.trim() && !it.startsWith('Picked up') && !it.startsWith('WARNING') }.last().trim()
+                    def version = raw.readLines()
+                        .findAll { it?.trim() && !it.startsWith('Picked up') && !it.startsWith('WARNING') }
+                        .last()
+                        .trim()
                     echo "Versión detectada: ${version}"
 
                     def targetRepo = version.contains('SNAPSHOT') ? env.ART_SNAPSHOT_REPO : env.ART_RELEASE_REPO
@@ -94,8 +90,7 @@ pipeline {
 
                     def server = Artifactory.server(env.ART_SERVER_ID)
 
-                    // Estructura de destino típica (puedes simplificar a solo targetRepo/)
-                    // Quedará: libs-xxx-local/loginapp/<version>/<archivo>.jar
+                    // Sube todos los JAR desde target/ a: <repo>/<proyecto>/<version>/
                     def uploadSpec = """{
                       "files": [
                         {
